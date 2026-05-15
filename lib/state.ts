@@ -35,3 +35,9 @@ export async function setSession(chatId: number, session: Session) {
 export async function clearSession(chatId: number) {
   await redis().del(key(chatId));
 }
+
+export async function markUpdateSeen(updateId: number): Promise<boolean> {
+  const k = `ra:update:${updateId}`;
+  const res = await redis().set(k, 1, { nx: true, ex: 600 });
+  return res === "OK";
+}

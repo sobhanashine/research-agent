@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sendMessage, sendDocument, sendChatAction, editMessage, deleteMessage } from "../lib/telegram.js";
-import { getSession, setSession, clearSession } from "../lib/state.js";
+import { getSession, setSession, clearSession, markUpdateSeen } from "../lib/state.js";
 import { generateClarifyingQuestions, performResearch } from "../lib/research.js";
 import { buildDocx, sanitizeFilename } from "../lib/docx.js";
 
@@ -19,10 +19,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  // Ack Telegram immediately so it does not retry the webhook (which caused
+  // duplicate /start messages). Processing continues after the response.
+  res.status(200).send("ok");
+
   const token = process.env.TELEGRAM_BOT_TOKEN!;
   const update = req.body;
 
   try {
+    const updateId: number | undefined = update?.update_id;
+    if (typeof updateId === "number") {
+      const fresh = await markUpdateSeen(updateId);
+      if (!fresh) return;
+    }
+
     const msg = update?.message;
     if (!msg || !msg.text) return;
 
@@ -150,5 +160,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error("Handler error:", err);
   }
-  res.status(200).send("ok");
 }
