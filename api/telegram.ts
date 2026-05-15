@@ -21,7 +21,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const token = process.env.TELEGRAM_BOT_TOKEN!;
   const update = req.body;
-  res.status(200).send("ok");
 
   try {
     const msg = update?.message;
@@ -151,4 +150,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error("Handler error:", err);
   }
+  res.status(200).send("ok");
 }
