@@ -31,12 +31,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const text: string = msg.text.trim();
     const messageId: number = msg.message_id;
 
-    if (text === "/start" || text === "/help") {
+    if (text === "/start") {
       await clearSession(chatId);
+      const firstName = msg.from?.first_name ? ` ${msg.from.first_name}` : "";
       await sendMessage(
         token,
         chatId,
-        "👋 *Research Agent*\n\nSend me a research *title* or topic and I'll:\n1. Ask a few clarifying questions\n2. Research it with live web search\n3. Reply with a Word (.docx) report\n\nCommands:\n/start — reset\n/cancel — cancel current session"
+        `👋 Hello${firstName}! Welcome aboard.`
+      );
+      await new Promise((r) => setTimeout(r, 600));
+      await sendMessage(
+        token,
+        chatId,
+        "🤖 *I'm your Research Agent.*\n\nI turn any topic into a polished Word document — powered by live web search and AI.\n\n*Here's how it works:*\n1️⃣  You send me a research *title* or topic\n2️⃣  I ask 3–5 quick clarifying questions to focus the research\n3️⃣  You answer them in a single message\n4️⃣  I search the web, write a structured report, and send you a *.docx* file with cited sources\n\n*Commands:*\n• /start — restart the conversation\n• /help — show this intro again\n• /cancel — cancel the current research\n\n✨ Ready when you are — *send me a topic to begin!*"
+      );
+      return;
+    }
+
+    if (text === "/help") {
+      await sendMessage(
+        token,
+        chatId,
+        "🤖 *Research Agent — Help*\n\nSend me a research *title* and I'll:\n1. Ask clarifying questions\n2. Search the web\n3. Reply with a Word (.docx) report\n\n*Commands:*\n• /start — restart\n• /cancel — cancel current research\n\nJust send a topic to begin!"
       );
       return;
     }
