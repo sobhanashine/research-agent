@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { waitUntil } from "@vercel/functions";
 import { sendMessage, sendDocument, sendChatAction, editMessage, deleteMessage } from "../lib/telegram.js";
 import { getSession, setSession, clearSession, markUpdateSeen } from "../lib/state.js";
 import { generateClarifyingQuestions, performResearch } from "../lib/research.js";
 import { buildDocx, sanitizeFilename } from "../lib/docx.js";
 
 export const config = { maxDuration: 60 };
-//s
+
 async function status(token: string, chatId: number, messageId: number, text: string) {
   try {
     await editMessage(token, chatId, messageId, text);
@@ -19,13 +20,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // Ack Telegram immediately so it does not retry the webhook (which caused
-  // duplicate /start messages). Processing continues after the response.
-  res.status(200).send("ok");
-
-  const token = process.env.TELEGRAM_BOT_TOKEN!;
+  // Ack Telegram immediately and detach the work via waitUntil so the
+  // response flushes within milliseconds. Without this, Telegram waits for
+  // the full handler to return (5–60s) and retries on read timeout, which
+  // produced the duplicate welcome messages.
   const update = req.body;
+  res.status(200).send("ok");
+  waitUntil(processUpdate(update));
+}
 
+async function processUpdate(update: any) {
+  const token = process.env.TELEGRAM_BOT_TOKEN!;
   try {
     const updateId: number | undefined = update?.update_id;
     if (typeof updateId === "number") {
@@ -161,3 +166,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("Handler error:", err);
   }
 }
+
