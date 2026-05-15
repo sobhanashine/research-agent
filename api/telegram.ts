@@ -5,7 +5,7 @@ import { generateClarifyingQuestions, performResearch } from "../lib/research.js
 import { buildDocx, sanitizeFilename } from "../lib/docx.js";
 
 export const config = { maxDuration: 60 };
-
+//s
 async function status(token: string, chatId: number, messageId: number, text: string) {
   try {
     await editMessage(token, chatId, messageId, text);
