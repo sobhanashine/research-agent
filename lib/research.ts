@@ -4,8 +4,27 @@ function client() {
   return new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 }
 
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6): Promise<T> {
+  let lastErr: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message ?? err);
+      const is429 = msg.includes("429") || msg.toLowerCase().includes("too many requests") || msg.toLowerCase().includes("quota");
+      if (!is429 || attempt === maxAttempts) throw err;
+      const retryMatch = msg.match(/retry in ([\d.]+)s/i);
+      const waitSec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) + 1 : Math.min(60, 15 * attempt);
+      console.log(`[${label}] 429 hit, retry ${attempt}/${maxAttempts} after ${waitSec}s`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+    }
+  }
+  throw lastErr;
+}
+
 export async function generateClarifyingQuestions(topic: string): Promise<string[]> {
-  const model = client().getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = client().getGenerativeModel({ model: "gemini-2.5-flash" });
   const prompt = `You are a research assistant. The user wants to research this topic:
 
 "${topic}"
@@ -14,7 +33,7 @@ Generate 3-5 short clarifying questions to narrow down scope, audience, depth, a
 Return ONLY a JSON array of strings, no markdown, no extra text. Example:
 ["Question 1?", "Question 2?", "Question 3?"]`;
 
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt), "clarify");
   const text = result.response.text().trim();
   const cleaned = text.replace(/^```json\s*/i, "").replace(/```$/g, "").trim();
   try {
@@ -41,7 +60,7 @@ export async function performResearch(
   answers: string
 ): Promise<ResearchResult> {
   const model = client().getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     tools: [{ googleSearch: {} } as any],
   });
 
@@ -67,7 +86,7 @@ INSTRUCTIONS:
 
 Output ONLY the Markdown report.`;
 
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt), "research");
   const response = result.response;
   const text = response.text();
 
