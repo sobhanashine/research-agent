@@ -14,6 +14,28 @@ export async function sendMessage(token: string, chatId: number, text: string, r
   return res.json();
 }
 
+export async function editMessage(token: string, chatId: number, messageId: number, text: string) {
+  const res = await fetch(`${TG_API(token)}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "Markdown",
+    }),
+  });
+  return res.json();
+}
+
+export async function deleteMessage(token: string, chatId: number, messageId: number) {
+  await fetch(`${TG_API(token)}/deleteMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+  });
+}
+
 export async function sendChatAction(token: string, chatId: number, action: string) {
   await fetch(`${TG_API(token)}/sendChatAction`, {
     method: "POST",
