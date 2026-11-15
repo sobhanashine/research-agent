@@ -1,131 +1,93 @@
-# Research Agent — Telegram Bot on Vercel (Free)
+<img src="docs/assets/readme-header.svg" alt="Research Agent — from a research question to a Word report" width="1200" />
 
-A Telegram bot that takes a research title, asks clarifying questions, performs live web research, and replies with a `.docx` Word report.
+# Research Agent
 
-**Stack (all free tiers):**
-- **Vercel Hobby** — serverless hosting
-- **Google Gemini API** — LLM + Google Search grounding (free tier)
-- **Upstash Redis** — persistent session state (free tier)
-- **Telegram Bot API** — chat interface (free)
-- **`docx`** — generates `.docx` files
+A Telegram research assistant that turns a topic into a structured **Word report with source links**. It asks clarifying questions, researches with Gemini and Google Search grounding, and sends the resulting `.docx` file back to the conversation.
 
-> ⚠️ Claude Pro (chat subscription) does **not** include API access — that's why we use Gemini's free API tier instead.
+**TypeScript · Gemini · Upstash Redis · Telegram Bot API · Vercel**
 
----
+## User flow
 
-## 1. Create the Telegram Bot
+1. Send `/start`, then a research topic.
+2. Answer the assistant's three to five clarifying questions in one message; `any` skips extra preferences.
+3. Follow progress updates in Telegram.
+4. Receive the generated Word document, including the sources returned by search grounding.
 
-1. Open Telegram, message [@BotFather](https://t.me/BotFather)
-2. Send `/newbot`, follow prompts
-3. Copy the **bot token** (looks like `123456:ABC-DEF...`)
+`/help` explains the flow; `/cancel` clears the saved conversation session. It does not guarantee that an already-running background research request is stopped.
 
-## 2. Get a Gemini API key (free)
+## Architecture
 
-1. Go to <https://aistudio.google.com/apikey>
-2. Sign in with Google → **Create API key**
-3. Copy it
+```mermaid
+flowchart LR
+    T[Telegram message] --> H[Vercel webhook]
+    H --> S[(Redis session)]
+    H --> G[Gemini and Google Search]
+    G --> D[Word document builder]
+    D --> T
+```
 
-## 3. Create an Upstash Redis database (free)
+The webhook acknowledges updates immediately and processes work through `waitUntil`. Redis holds the topic, clarification stage, and research state across serverless invocations. Update IDs are deduplicated for ten minutes; saved sessions expire after six hours.
 
-1. Go to <https://console.upstash.com/>
-2. Sign in (GitHub/Google) → **Create Database** → Redis → Free tier
-3. From the database page, copy:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
+## Run locally
 
-## 4. Deploy to Vercel
+Use a current Node.js runtime compatible with the TypeScript and Vercel dependencies, plus npm. You need a Telegram bot, Gemini API access, and an Upstash Redis database.
 
 ```bash
-npm install
-npm install -g vercel
-vercel login
-vercel link       # create a new project
-vercel --prod     # first deploy
+git clone https://github.com/sobhanashine/research-agent.git
+cd research-agent
+npm ci
+cp .env.example .env.local
 ```
 
-Add environment variables (Vercel dashboard → Project → Settings → Environment Variables), or via CLI:
+Fill in these server-side environment variables:
 
-```bash
-vercel env add TELEGRAM_BOT_TOKEN
-vercel env add GEMINI_API_KEY
-vercel env add UPSTASH_REDIS_REST_URL
-vercel env add UPSTASH_REDIS_REST_TOKEN
-vercel --prod    # redeploy so env vars take effect
-```
+| Variable | Purpose |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | Bot access from BotFather |
+| `GEMINI_API_KEY` | Clarification and grounded research |
+| `UPSTASH_REDIS_REST_URL` | Redis REST endpoint |
+| `UPSTASH_REDIS_REST_TOKEN` | Redis access token |
 
-Note your deployment URL, e.g. `https://research-agent-xyz.vercel.app`
+Keep `.env.local` out of Git. The provider accounts and their usage limits are managed separately; this repository does not guarantee a free production deployment.
 
-## 5. Register the Telegram webhook (one-time)
+### Choose a development mode
 
-```bash
-curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{"url":"<YOUR_VERCEL_URL>/api/telegram"}'
-```
+| Command | Mode |
+| --- | --- |
+| `npm run dev` | Vercel development server for the webhook route |
+| `npm run local` | Telegram long polling with local environment loading |
+| `npm run deploy` | Publish to Vercel production |
 
-Verify:
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
-```
+Use a separate development bot for polling: `npm run local` removes that bot's configured webhook before reading updates. For webhook development, expose the local Vercel server over HTTPS and point the development bot at `/api/telegram`.
 
-## 6. Use it
+## Deployment
 
-1. Open your bot in Telegram, send `/start`
-2. Send a topic, e.g. `Effects of intermittent fasting on metabolism`
-3. The bot replies with 3–5 clarifying questions
-4. Reply with your answers in **one message** (or write `any` to skip)
-5. Wait ~30–60 seconds → receive a `.docx` report as a reply 🎉
+1. Link the repository to the intended Vercel project and configure the four variables above in its production environment.
+2. Deploy with `npm run deploy`.
+3. Register the deployed HTTPS `/api/telegram` endpoint as the bot's Telegram webhook.
+4. Use Telegram's `getWebhookInfo` to confirm the target and delivery errors, then exercise `/start` → topic → answers → document with the development bot before switching operational use.
 
-Commands: `/start`, `/help`, `/cancel`
+[vercel.json](vercel.json) configures a 60-second function duration. Model latency, quota retries, and report generation still have to fit the platform's execution limits; the immediate webhook acknowledgement is not a completion guarantee.
 
----
+## Repository map
 
-## How it works
-
-```
-Telegram → POST /api/telegram (Vercel function)
-   ├─ /start          → reset session in Upstash
-   ├─ topic message   → Gemini generates clarifying questions → stored in Upstash
-   ├─ answers message → Gemini researches with Google Search grounding
-   │                  → markdown report → converted to .docx
-   │                  → sent back as document reply
-   └─ session cleared
-```
-
-State lives in Upstash because Vercel serverless functions are stateless between invocations.
-
-## Free-tier limits
-
-| Service    | Free tier                                  |
-|------------|--------------------------------------------|
-| Vercel     | 100 GB-hours/mo, 60s max function duration |
-| Gemini API | 15 req/min, 1500 req/day (Flash model)     |
-| Upstash    | 10k commands/day, 256 MB                   |
-| Telegram   | Unlimited                                  |
-
-Plenty for personal use.
-
-## Local dev (optional)
-
-```bash
-cp .env.example .env.local   # fill values
-vercel dev
-```
-
-Use [ngrok](https://ngrok.com/) to expose `localhost:3000` and point the webhook there for testing.
+| File | Responsibility |
+| --- | --- |
+| [api/telegram.ts](api/telegram.ts) | Webhook, conversation stages, and Telegram progress updates |
+| [lib/research.ts](lib/research.ts) | Clarifying questions, grounded research, and source extraction |
+| [lib/state.ts](lib/state.ts) | Redis sessions and update deduplication |
+| [lib/docx.ts](lib/docx.ts) | Markdown-to-Word report generation |
+| [lib/telegram.ts](lib/telegram.ts) | Telegram messaging and document delivery |
+| [scripts/local.ts](scripts/local.ts) | Local long-polling runner |
 
 ## Troubleshooting
 
-- **Bot doesn't respond:** run `getWebhookInfo` — `last_error_message` will show issues. Confirm env vars are set in Vercel and you redeployed after adding them.
-- **"Function timed out":** Gemini research is occasionally slow. The function is capped at 60s on Hobby tier. Try a more specific topic.
-- **Garbled doc:** check Vercel function logs.
+- **No bot response:** verify the environment in the active runtime and inspect Telegram's webhook delivery status. Polling and webhook delivery should not compete for the same bot.
+- **Repeated or stalled work:** inspect the update ID and Redis session stage; `/cancel` clears the saved session.
+- **Research failure:** check model availability, quota, execution time, and the server logs. A report's citations are the grounding links returned by Gemini and still need editorial review.
 
-## File layout
+The package currently defines development and deployment scripts, without an automated test-suite command. The complete topic-to-document flow is the practical integration check.
 
-```
-api/telegram.ts     # Vercel serverless webhook handler
-lib/telegram.ts     # Telegram Bot API helpers (sendMessage, sendDocument)
-lib/state.ts        # Upstash Redis session store
-lib/research.ts     # Gemini: clarifying questions + grounded research
-lib/docx.ts         # Markdown → .docx converter
-```
+---
+
+By [Sobhan Ashineh](https://github.com/sobhanashine) · [Full portfolio at FMS](https://futuremservices.ir/en/work)
